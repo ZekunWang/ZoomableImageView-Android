@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Zoomable Image View -->
+    <declare-styleable name="ZoomableImageView">
+        <attr name="maxScale" format="float"/>
+        <attr name="minScale" format="float"/>
+        <attr name="translationStickyFactor" format="float"/>
+        <attr name="shouldBounceToMaxScale" format="boolean"/>
+        <attr name="shouldBounceFromMinScale" format="boolean"/>
+        <attr name="shouldBounceFromTranslation" format="boolean"/>
+    </declare-styleable>
+</resources>
