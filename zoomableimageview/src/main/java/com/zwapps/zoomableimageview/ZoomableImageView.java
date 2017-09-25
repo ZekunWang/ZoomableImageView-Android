@@ -7,10 +7,10 @@ import android.graphics.drawable.Drawable;
 import android.support.annotation.Nullable;
 import android.support.v7.widget.AppCompatImageView;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
+import android.view.View;
 
 /**
  * Created by zekunwang on 9/23/17.
@@ -19,6 +19,12 @@ import android.view.ScaleGestureDetector;
 public class ZoomableImageView extends AppCompatImageView {
     private static final String TAG = ZoomableImageView.class.getSimpleName();
 
+    private static int ACTION_MOVE_THRESHOLD = 20;
+
+    private enum Status {
+        NON_CLICKABLE, CLICKABLE, DRAGGING, SCALING
+    }
+
     private Drawable drawable;
 
     private ScaleGestureDetector scaleGestureDetector;
@@ -26,8 +32,12 @@ public class ZoomableImageView extends AppCompatImageView {
 
     private Matrix matrix ;
     private float[] values;
-    private boolean isScaling = false;
     private float initScale = Float.MAX_VALUE;
+    private Status status = Status.NON_CLICKABLE;
+
+    private float moveX, moveY;
+    private View.OnClickListener clickListener;
+    private View.OnLongClickListener longClickListener;
 
     private float maxScale = 3;
     private float minScale = 0.4f;
@@ -63,12 +73,7 @@ public class ZoomableImageView extends AppCompatImageView {
             shouldBounceToMaxScale = attributes.getBoolean(R.styleable.ZoomableImageView_shouldBounceToMaxScale, true);
             shouldBounceFromMinScale = attributes.getBoolean(R.styleable.ZoomableImageView_shouldBounceFromMinScale, true);
             shouldBounceFromTranslation = attributes.getBoolean(R.styleable.ZoomableImageView_shouldBounceFromTranslation, true);
-            Log.e(TAG, "maxScale: " + maxScale);
-            Log.e(TAG, "minScale: " + minScale);
-            Log.e(TAG, "translationStickyFactor: " + translationStickyFactor);
-            Log.e(TAG, "shouldBounceToMaxScale: " + shouldBounceToMaxScale);
-            Log.e(TAG, "shouldBounceFromMinScale: " + shouldBounceFromMinScale);
-            Log.e(TAG, "shouldBounceFromTranslation: " + shouldBounceFromTranslation);
+
             attributes.recycle();
         }
     }
@@ -114,7 +119,7 @@ public class ZoomableImageView extends AppCompatImageView {
     public void setImageMatrix(Matrix matrix) {
         matrix.getValues(values);
 
-        if (isScaling) {
+        if (status == Status.SCALING) {
             updateMinMaxScale();
             updateScaleTrans();
 
@@ -123,7 +128,7 @@ public class ZoomableImageView extends AppCompatImageView {
                 transToBounds();
             }
 
-            // TODO: reach scaleToFit translation down scales down and animate out image
+            // TODO: reaching scaleToFit translation down scales down and animate out image
 
         }
 
@@ -193,7 +198,7 @@ public class ZoomableImageView extends AppCompatImageView {
     }
 
     private void transToBounds() {
-        if (isScaling) {
+        if (status == Status.SCALING) {
             return;
         }
 
@@ -222,23 +227,74 @@ public class ZoomableImageView extends AppCompatImageView {
             return super.onTouchEvent(event);
         }
 
+        boolean shouldMove;
+
+        int action = event.getActionMasked();
+
+        // Manage click listeners
+        if (action == MotionEvent.ACTION_DOWN) {
+            if (clickListener != null || longClickListener != null) {
+                updateClickListeners(true);
+            }
+
+            moveX = event.getAxisValue(MotionEvent.AXIS_X);
+            moveY = event.getAxisValue(MotionEvent.AXIS_Y);
+
+        } else if (status == Status.CLICKABLE && action == MotionEvent.ACTION_POINTER_DOWN) {
+            // Do not trigger click event if is clickable but move far enough or about to scale
+            updateClickListeners(false);
+
+        } else if (status == Status.CLICKABLE && action == MotionEvent.ACTION_MOVE) {
+            float diffX = Math.abs(event.getAxisValue(MotionEvent.AXIS_X) - moveX);
+            float diffY = Math.abs(event.getAxisValue(MotionEvent.AXIS_Y) - moveY);
+
+            shouldMove = diffX >= ACTION_MOVE_THRESHOLD || diffY >= ACTION_MOVE_THRESHOLD;
+
+            // Do not trigger click event if is clickable but move far enough or about to scale
+            if (shouldMove) {
+                updateClickListeners(false);
+            }
+        }
+
         scaleGestureDetector.onTouchEvent(event);
 
         if (!scaleGestureDetector.isInProgress()) {
             gestureDetector.onTouchEvent(event);
         }
 
-        if (event.getActionMasked() == MotionEvent.ACTION_UP && !isScaling) {
+        if (action == MotionEvent.ACTION_UP && status == Status.DRAGGING) {
             transToBounds();
             matrix.setValues(values);
             setImageMatrix(matrix);
         }
 
-        return true;
+        return super.onTouchEvent(event);
     }
 
-    public boolean isScaling() {
-        return isScaling;
+    private void updateClickListeners(boolean enabled) {
+        if (enabled) {
+            super.setOnClickListener(clickListener);
+            super.setOnLongClickListener(longClickListener);
+            status = Status.CLICKABLE;
+        } else {
+            super.setOnClickListener(null);
+            super.setOnLongClickListener(null);
+            status = Status.NON_CLICKABLE;
+        }
+    }
+
+    @Override
+    public void setOnClickListener(@Nullable OnClickListener l) {
+        clickListener = l;
+    }
+
+    @Override
+    public void setOnLongClickListener(@Nullable OnLongClickListener l) {
+        longClickListener = l;
+    }
+
+    public Status getStatus() {
+        return status;
     }
 
     public float getInitScale() {
@@ -277,6 +333,14 @@ public class ZoomableImageView extends AppCompatImageView {
         this.shouldBounceFromMinScale = shouldBounceFromMinScale;
     }
 
+    public boolean isShouldBounceFromTranslation() {
+        return shouldBounceFromTranslation;
+    }
+
+    public void setShouldBounceFromTranslation(boolean shouldBounceFromTranslation) {
+        this.shouldBounceFromTranslation = shouldBounceFromTranslation;
+    }
+
     public float getTranslationStickyFactor() {
         return translationStickyFactor;
     }
@@ -288,7 +352,7 @@ public class ZoomableImageView extends AppCompatImageView {
     private final class ScaleGestureListener extends ScaleGestureDetector.SimpleOnScaleGestureListener {
         @Override
         public boolean onScale(ScaleGestureDetector detector) {
-            isScaling = true;
+            status = Status.SCALING;
             // getScaleFactor() is delta value
             matrix.postScale(detector.getScaleFactor(), detector.getScaleFactor(),
                     detector.getFocusX(), detector.getFocusY());
@@ -316,7 +380,7 @@ public class ZoomableImageView extends AppCompatImageView {
     private final class GestureListener extends GestureDetector.SimpleOnGestureListener {
         @Override
         public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY) {
-            isScaling = false;
+            status = Status.DRAGGING;
 
             // Apply translationStickyFactor if exceeds bounds
             distanceX = updateGestureDistance(distanceX, Matrix.MTRANS_X, drawable.getIntrinsicWidth() * values[Matrix.MSCALE_X], getWidth());

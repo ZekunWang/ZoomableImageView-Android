@@ -19,8 +19,8 @@
         app:minScale="0.6"
         app:translationStickyFactor="0.2"
         app:shouldBounceFromMinScale="true"
-        app:shouldBounceToMaxScale="false"
-        app:shouldBounceFromTranslation="false"
+        app:shouldBounceToMaxScale="true"
+        app:shouldBounceFromTranslation="true"
         android:src="@drawable/demo_image"
         android:background="#ff0000"/>
 
